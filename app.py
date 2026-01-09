@@ -142,17 +142,24 @@ def main():
             if adf[1] > 0.05:
                 st.warning("⚠️ Data is Non-Stationary. SARIMA is applying integrated (d=1) differencing.")
             
-        with col_s2:
+with col_s2:
             st.markdown("### Residual Analysis")
-            # This is a simplified summary display
-            st.dataframe(results.pvalues.to_frame(name="P-Values").style.highlight_between(left=0, right=0.05, color_light="#d4edda"))
+            # Create the DataFrame
+            p_values = results.pvalues.to_frame(name="P-Values")
+            
+            # Simple highlighting: Significant values (p < 0.05) will be bold/colored
+            def color_significant(val):
+                color = '#d4edda' if val < 0.05 else 'white'
+                return f'background-color: {color}'
 
-    with tab_raw:
-        st.markdown("### Historical Records")
-        st.dataframe(data.sort_index(ascending=False), use_container_width=True)
+            # Use .style.applymap for per-cell styling
+            styled_df = p_values.style.applymap(color_significant)
+            
+            st.dataframe(styled_df, use_container_width=True)
 
     # Footer
     st.markdown("""<div style='text-align: center; color: grey; padding: 20px;'>SkyCast Analytics v1.0 | © 2026 Airline Data Science Team</div>""", unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
+

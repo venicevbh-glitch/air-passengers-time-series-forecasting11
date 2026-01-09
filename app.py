@@ -31,6 +31,7 @@ local_css()
 # -----------------------------
 @st.cache_data
 def load_and_prep_data():
+    # Loading the airline passenger dataset
     df = pd.read_csv("AirPassengers.csv")
     df["Month"] = pd.to_datetime(df["Month"])
     df.set_index("Month", inplace=True)
@@ -38,9 +39,10 @@ def load_and_prep_data():
     return df
 
 def run_forecast(data, horizon):
-    # Log transform for variance stabilization
+    # Log transformation to stabilize variance
     log_data = np.log(data["Passengers"])
     
+    # Implementing SARIMA(1, 1, 1)x(1, 1, 1, 12)
     model = SARIMAX(
         log_data,
         order=(1, 1, 1),
@@ -52,7 +54,7 @@ def run_forecast(data, horizon):
     results = model.fit(disp=False)
     forecast_obj = results.get_forecast(steps=horizon)
     
-    # Back-transforming results
+    # Back-transforming log predictions to original scale
     mean = np.exp(forecast_obj.predicted_mean)
     conf_int = np.exp(forecast_obj.conf_int())
     
@@ -85,33 +87,37 @@ def main():
     last_val = data["Passengers"].iloc[-1]
     forecast_final = forecast_mean.iloc[-1]
     
-    m1.metric("Current Volume", f"{int(last_val)}", "Last Obs")
-    m2.metric("Projected (End of Horizon)", f"{int(forecast_final)}", f"{((forecast_final/last_val)-1)*100:.1f}%")
-    
-    # Simple MAE for the last year
+    # Calculating evaluation metrics
     test_actuals = data["Passengers"][-12:]
     test_preds = forecast_mean[:len(test_actuals)]
     mae = mean_absolute_error(test_actuals, test_preds)
     rmse = np.sqrt(mean_squared_error(test_actuals, test_preds))
-    
+
+    m1.metric("Current Volume", f"{int(last_val)}", "Last Obs")
+    m2.metric("Projected (End of Horizon)", f"{int(forecast_final)}", f"{((forecast_final/last_val)-1)*100:.1f}%")
     m3.metric("Model MAE", f"{mae:.2f}")
     m4.metric("Model RMSE", f"{rmse:.2f}")
 
     st.markdown("---")
 
-    # 2. Main Visuals Tab
-    tab_viz, tab_stat, tab_raw = st.tabs(["📈 Forecast Intelligence", "🧪 Statistical Validity", "📂 Data Explorer"])
+    # 2. Tabs for different perspectives
+    tab_viz, tab_stat, tab_diag, tab_raw = st.tabs([
+        "📈 Forecast Intelligence", 
+        "🧪 Statistical Validity", 
+        "🩺 Model Health",
+        "📂 Data Explorer"
+    ])
 
     with tab_viz:
         fig = go.Figure()
         
-        # Historical Data
+        # Historical Data Plot
         fig.add_trace(go.Scatter(x=data.index, y=data["Passengers"], name="Historical", line=dict(color="#1f77b4", width=2)))
         
-        # Forecast Mean
+        # Forecast Mean Plot
         fig.add_trace(go.Scatter(x=forecast_mean.index, y=forecast_mean, name="Forecast", line=dict(color="#FF4B4B", width=3, dash='dot')))
         
-        # Confidence Interval
+        # Confidence Interval Shading
         fig.add_trace(go.Scatter(
             x=list(conf_int.index) + list(conf_int.index)[::-1],
             y=list(conf_int.iloc[:, 1]) + list(conf_int.iloc[:, 0])[::-1],
@@ -137,29 +143,33 @@ def main():
         
         with col_s1:
             st.markdown("### Stationarity Test")
+            # ADF Test to check for stationarity
             adf = adfuller(data["Passengers"])
             st.info(f"**ADF Statistic:** `{adf[0]:.3f}`\n\n**P-Value:** `{adf[1]:.3f}`")
             if adf[1] > 0.05:
                 st.warning("⚠️ Data is Non-Stationary. SARIMA is applying integrated (d=1) differencing.")
             
-with col_s2:
-            st.markdown("### Residual Analysis")
-            # Create the DataFrame
-            p_values = results.pvalues.to_frame(name="P-Values")
-            
-            # Simple highlighting: Significant values (p < 0.05) will be bold/colored
-            def color_significant(val):
-                color = '#d4edda' if val < 0.05 else 'white'
-                return f'background-color: {color}'
+        with col_s2:
+            st.markdown("### Coefficient Analysis")
+            # Displaying model p-values for statistical significance
+            p_values = results.pvalues.to_frame(name="P-Value")
+            st.dataframe(p_values.style.format("{:.4f}"), use_container_width=True)
+            st.caption("P-values < 0.05 indicate statistically significant parameters.")
 
-            # Use .style.applymap for per-cell styling
-            styled_df = p_values.style.applymap(color_significant)
-            
-            st.dataframe(styled_df, use_container_width=True)
+    with tab_diag:
+        st.markdown("### SARIMA Diagnostics")
+        st.write("Residuals should behave like white noise for a reliable forecast.")
+        # Generates standard SARIMAX diagnostic plots
+        fig_diag = results.plot_diagnostics(figsize=(12, 8))
+        st.pyplot(fig_diag)
+
+    with tab_raw:
+        st.markdown("### Historical Records")
+        st.dataframe(data.sort_index(ascending=False), use_container_width=True)
 
     # Footer
-    st.markdown("""<div style='text-align: center; color: grey; padding: 20px;'>SkyCast Analytics v1.0 | © 2026 Airline Data Science Team</div>""", unsafe_allow_html=True)
+    st.markdown("---")
+    st.markdown("<div style='text-align: center; color: grey; padding: 20px;'>SkyCast Analytics v1.0 | Built with SARIMA & Streamlit</div>", unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
-

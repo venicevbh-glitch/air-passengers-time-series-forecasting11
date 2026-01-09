@@ -82,19 +82,24 @@ def main():
     with st.spinner("Refining SARIMA parameters..."):
         results, forecast_mean, conf_int = run_forecast(data, forecast_horizon)
 
-    # 1. KPI Metrics Row
+# 1. KPI Metrics Row
     m1, m2, m3, m4 = st.columns(4)
     last_val = data["Passengers"].iloc[-1]
     forecast_final = forecast_mean.iloc[-1]
     
-    # Calculating evaluation metrics
-    test_actuals = data["Passengers"][-12:]
-    test_preds = forecast_mean[:len(test_actuals)]
+    # --- DYNAMIC EVALUATION FIX ---
+    # We compare the last 'horizon' months of data with the 'horizon' months of forecast
+    # We use min() to ensure we don't try to look back further than our actual data exists
+    eval_periods = min(len(data), forecast_horizon)
+    test_actuals = data["Passengers"][-eval_periods:]
+    test_preds = forecast_mean[:eval_periods]
+    
     mae = mean_absolute_error(test_actuals, test_preds)
     rmse = np.sqrt(mean_squared_error(test_actuals, test_preds))
+    # ------------------------------
 
     m1.metric("Current Volume", f"{int(last_val)}", "Last Obs")
-    m2.metric("Projected (End of Horizon)", f"{int(forecast_final)}", f"{((forecast_final/last_val)-1)*100:.1f}%")
+    m2.metric("Projected Total", f"{int(forecast_final)}", f"{((forecast_final/last_val)-1)*100:.1f}%")
     m3.metric("Model MAE", f"{mae:.2f}")
     m4.metric("Model RMSE", f"{rmse:.2f}")
 
@@ -173,3 +178,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

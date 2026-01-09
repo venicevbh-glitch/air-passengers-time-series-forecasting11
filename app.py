@@ -1,172 +1,158 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 from statsmodels.tsa.stattools import adfuller
 from statsmodels.tsa.statespace.sarimax import SARIMAX
-from sklearn.metrics import mean_absolute_error
+from sklearn.metrics import mean_absolute_error, mean_squared_error
 
 # -----------------------------
-# PAGE CONFIG
+# 🎨 STYLING & CONFIG
 # -----------------------------
-st.set_page_config(
-    page_title="Air Passengers Forecasting",
-    page_icon="✈️",
-    layout="wide"
-)
+st.set_page_config(page_title="SkyCast | Passenger Forecasting", page_icon="✈️", layout="wide")
+
+def local_css():
+    st.markdown("""
+        <style>
+        .main { background-color: #f5f7f9; }
+        .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        div[data-testid="stExpander"] { border: none !important; box-shadow: 0 2px 4px rgba(0,0,0,0.05); background: white; }
+        .stTabs [data-baseweb="tab-list"] { gap: 8px; }
+        .stTabs [data-baseweb="tab"] { 
+            background-color: #ffffff; border-radius: 4px 4px 0px 0px; padding: 10px 20px;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+local_css()
 
 # -----------------------------
-# TITLE & INTRO
-# -----------------------------
-st.title("✈️ Air Passengers Time Series Forecasting")
-st.markdown(
-    """
-    Forecast future airline passenger demand using **Seasonal ARIMA (SARIMA)**.  
-    This app demonstrates a complete **time series analysis → modeling → forecasting** workflow.
-    """
-)
-
-# -----------------------------
-# SIDEBAR CONTROLS
-# -----------------------------
-st.sidebar.header("⚙️ Forecast Settings")
-forecast_horizon = st.sidebar.slider(
-    "Forecast Months",
-    min_value=6,
-    max_value=36,
-    value=12,
-    step=1
-)
-
-st.sidebar.markdown("---")
-st.sidebar.info(
-    "SARIMA Model\n\n(1,1,1) × (1,1,1,12)\n\n"
-    "Handles trend + yearly seasonality"
-)
-
-# -----------------------------
-# LOAD DATA
+# 📊 DATA LOGIC
 # -----------------------------
 @st.cache_data
-def load_data():
+def load_and_prep_data():
     df = pd.read_csv("AirPassengers.csv")
     df["Month"] = pd.to_datetime(df["Month"])
     df.set_index("Month", inplace=True)
+    df.columns = ["Passengers"]
     return df
 
-data = load_data()
-
-# -----------------------------
-# TABS
-# -----------------------------
-tab1, tab2, tab3, tab4 = st.tabs(
-    ["📄 Data", "📊 Analysis", "🔮 Forecast", "📑 Model Summary"]
-)
-
-# -----------------------------
-# TAB 1: DATA
-# -----------------------------
-with tab1:
-    st.subheader("Dataset Overview")
-    st.write(data.head())
-
-    st.markdown("### Passenger Trend")
-    fig, ax = plt.subplots()
-    ax.plot(data, label="Passengers")
-    ax.set_xlabel("Year")
-    ax.set_ylabel("Passengers")
-    ax.legend()
-    st.pyplot(fig)
-
-# -----------------------------
-# TAB 2: ANALYSIS
-# -----------------------------
-with tab2:
-    st.subheader("Stationarity Check (ADF Test)")
-
-    adf_result = adfuller(data["Passengers"])
-    st.write(f"**ADF Statistic:** {adf_result[0]:.4f}")
-    st.write(f"**p-value:** {adf_result[1]:.4f}")
-
-    if adf_result[1] < 0.05:
-        st.success("Series is stationary")
-    else:
-        st.warning("Series is NOT stationary (Transformation required)")
-
-    st.markdown(
-        """
-        **Why this matters:**  
-        Time series models assume stationarity.  
-        We apply log transformation and differencing inside SARIMA to handle this.
-        """
-    )
-
-# -----------------------------
-# TAB 3: FORECAST
-# -----------------------------
-with tab3:
-    st.subheader("Future Passenger Forecast")
-
-    # Log transform
-    data["Log_Passengers"] = np.log(data["Passengers"])
-
-    # Train SARIMA
+def run_forecast(data, horizon):
+    # Log transform for variance stabilization
+    log_data = np.log(data["Passengers"])
+    
     model = SARIMAX(
-        data["Log_Passengers"],
+        log_data,
         order=(1, 1, 1),
         seasonal_order=(1, 1, 1, 12),
         enforce_stationarity=False,
         enforce_invertibility=False
     )
-
+    
     results = model.fit(disp=False)
-    st.success("Model trained successfully")
-
-    # Forecast
-    forecast = results.get_forecast(steps=forecast_horizon)
-    forecast_mean = np.exp(forecast.predicted_mean)
-    conf_int = np.exp(forecast.conf_int())
-
-    # Plot forecast
-    fig, ax = plt.subplots(figsize=(10, 4))
-    ax.plot(data["Passengers"], label="Historical")
-    ax.plot(forecast_mean, label="Forecast", color="black")
-    ax.fill_between(
-        conf_int.index,
-        conf_int.iloc[:, 0],
-        conf_int.iloc[:, 1],
-        alpha=0.3
-    )
-    ax.legend()
-    ax.set_title("Passenger Forecast")
-    st.pyplot(fig)
-
-    # Evaluation
-    train = data["Passengers"][:-forecast_horizon]
-    test = data["Passengers"][-forecast_horizon:]
-    mae = mean_absolute_error(test, forecast_mean[:len(test)])
-
-    st.markdown("### 📊 Model Evaluation")
-    st.metric("Mean Absolute Error (MAE)", f"{mae:.2f}")
+    forecast_obj = results.get_forecast(steps=horizon)
+    
+    # Back-transforming results
+    mean = np.exp(forecast_obj.predicted_mean)
+    conf_int = np.exp(forecast_obj.conf_int())
+    
+    return results, mean, conf_int
 
 # -----------------------------
-# TAB 4: MODEL SUMMARY
+# ✈️ MAIN APP
 # -----------------------------
-with tab4:
-    st.subheader("SARIMA Model Summary")
-    st.text(results.summary())
+def main():
+    # Header Section
+    col_t1, col_t2 = st.columns([1, 4])
+    with col_t1:
+        st.image("https://cdn-icons-png.flaticon.com/512/784/784844.png", width=80)
+    with col_t2:
+        st.title("SkyCast: Airline Demand Intelligence")
+        st.markdown("*Advanced Seasonal ARIMA Forecasting Engine*")
 
-    st.markdown(
-        """
-        **Interpretation:**
-        - Model captures trend and yearly seasonality
-        - Residual diagnostics indicate good fit
-        - Suitable for short to medium-term forecasting
-        """
-    )
+    # Sidebar
+    st.sidebar.header("🕹️ Control Panel")
+    forecast_horizon = st.sidebar.slider("Forecast Horizon (Months)", 6, 48, 24)
+    
+    data = load_and_prep_data()
 
-# -----------------------------
-# FOOTER
-# -----------------------------
-st.markdown("---")
-st.caption("Built with Python, SARIMA & Streamlit")
+    # Model Training
+    with st.spinner("Refining SARIMA parameters..."):
+        results, forecast_mean, conf_int = run_forecast(data, forecast_horizon)
+
+    # 1. KPI Metrics Row
+    m1, m2, m3, m4 = st.columns(4)
+    last_val = data["Passengers"].iloc[-1]
+    forecast_final = forecast_mean.iloc[-1]
+    
+    m1.metric("Current Volume", f"{int(last_val)}", "Last Obs")
+    m2.metric("Projected (End of Horizon)", f"{int(forecast_final)}", f"{((forecast_final/last_val)-1)*100:.1f}%")
+    
+    # Simple MAE for the last year
+    test_actuals = data["Passengers"][-12:]
+    test_preds = forecast_mean[:len(test_actuals)]
+    mae = mean_absolute_error(test_actuals, test_preds)
+    rmse = np.sqrt(mean_squared_error(test_actuals, test_preds))
+    
+    m3.metric("Model MAE", f"{mae:.2f}")
+    m4.metric("Model RMSE", f"{rmse:.2f}")
+
+    st.markdown("---")
+
+    # 2. Main Visuals Tab
+    tab_viz, tab_stat, tab_raw = st.tabs(["📈 Forecast Intelligence", "🧪 Statistical Validity", "📂 Data Explorer"])
+
+    with tab_viz:
+        fig = go.Figure()
+        
+        # Historical Data
+        fig.add_trace(go.Scatter(x=data.index, y=data["Passengers"], name="Historical", line=dict(color="#1f77b4", width=2)))
+        
+        # Forecast Mean
+        fig.add_trace(go.Scatter(x=forecast_mean.index, y=forecast_mean, name="Forecast", line=dict(color="#FF4B4B", width=3, dash='dot')))
+        
+        # Confidence Interval
+        fig.add_trace(go.Scatter(
+            x=list(conf_int.index) + list(conf_int.index)[::-1],
+            y=list(conf_int.iloc[:, 1]) + list(conf_int.iloc[:, 0])[::-1],
+            fill='toself',
+            fillcolor='rgba(255, 75, 75, 0.1)',
+            line=dict(color='rgba(255, 255, 255, 0)'),
+            hoverinfo="skip",
+            name="95% Confidence"
+        ))
+
+        fig.update_layout(
+            title="Projected Passenger Demand",
+            xaxis_title="Date",
+            yaxis_title="Total Passengers",
+            hovermode="x unified",
+            template="plotly_white",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    with tab_stat:
+        col_s1, col_s2 = st.columns(2)
+        
+        with col_s1:
+            st.markdown("### Stationarity Test")
+            adf = adfuller(data["Passengers"])
+            st.info(f"**ADF Statistic:** `{adf[0]:.3f}`\n\n**P-Value:** `{adf[1]:.3f}`")
+            if adf[1] > 0.05:
+                st.warning("⚠️ Data is Non-Stationary. SARIMA is applying integrated (d=1) differencing.")
+            
+        with col_s2:
+            st.markdown("### Residual Analysis")
+            # This is a simplified summary display
+            st.dataframe(results.pvalues.to_frame(name="P-Values").style.highlight_between(left=0, right=0.05, color_light="#d4edda"))
+
+    with tab_raw:
+        st.markdown("### Historical Records")
+        st.dataframe(data.sort_index(ascending=False), use_container_width=True)
+
+    # Footer
+    st.markdown("""<div style='text-align: center; color: grey; padding: 20px;'>SkyCast Analytics v1.0 | © 2026 Airline Data Science Team</div>""", unsafe_allow_html=True)
+
+if __name__ == "__main__":
+    main()

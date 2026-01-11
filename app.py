@@ -19,7 +19,7 @@ def local_css():
         div[data-testid="stExpander"] { border: none !important; box-shadow: 0 2px 4px rgba(0,0,0,0.05); background: white; }
         .stTabs [data-baseweb="tab-list"] { gap: 8px; }
         .stTabs [data-baseweb="tab"] { 
-            background-color: #ffffff; border-radius: 4px 4px 0px 0px; padding: 10px 20px;
+            background-color: #111; border-radius: 4px 4px 0px 0px; padding: 10px 20px;
         }
         </style>
     """, unsafe_allow_html=True)
@@ -178,4 +178,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 

@@ -15,7 +15,7 @@ def local_css():
     st.markdown("""
         <style>
         .main { background-color: #f5f7f9; }
-        .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .stMetric { background-color: #111; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
         div[data-testid="stExpander"] { border: none !important; box-shadow: 0 2px 4px rgba(0,0,0,0.05); background: white; }
         .stTabs [data-baseweb="tab-list"] { gap: 8px; }
         .stTabs [data-baseweb="tab"] { 
@@ -178,6 +178,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
